@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Ruff & Pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install package and dev dependencies
+        run: |
+          uv venv --allow-existing .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+
+      - name: Run Ruff linter
+        run: .venv/bin/ruff check src tests
+
+      - name: Run Pytest suite
+        run: .venv/bin/pytest -v
+
+      - name: Smoke test CLI entrypoints
+        run: |
+          .venv/bin/tcs doctor
+          .venv/bin/tcs skills
+          .venv/bin/tcs run --model mock:ci "Verify CI harness execution"
